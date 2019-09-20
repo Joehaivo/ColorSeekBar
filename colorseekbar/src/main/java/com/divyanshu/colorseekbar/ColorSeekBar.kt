@@ -8,10 +8,38 @@ import android.view.MotionEvent
 import android.view.View
 import androidx.annotation.ArrayRes
 
-class ColorSeekBar(context: Context, attributeSet: AttributeSet): View(context, attributeSet){
+class ColorSeekBar(context: Context, attributeSet: AttributeSet) : View(context, attributeSet) {
+    companion object {
+        const val TAG = "ColorSeekBar"
+    }
 
+    private var w = 0
     private val minThumbRadius = 16f
-    private var colorSeeds = intArrayOf(Color.parseColor("#000000"), Color.parseColor("#FF5252"), Color.parseColor("#FFEB3B"), Color.parseColor("#00C853"), Color.parseColor("#00B0FF"), Color.parseColor("#D500F9"), Color.parseColor("#8D6E63"))
+    var colorSeeds = intArrayOf(
+        Color.parseColor("#ff0001"),
+        Color.parseColor("#ffff00"),
+        Color.parseColor("#00ff00"),
+        Color.parseColor("#00ffff"),
+        Color.parseColor("#0000ff"),
+        Color.parseColor("#ff00ff"),
+        Color.parseColor("#ff0000")
+    )
+        set(value) {
+            field = value
+            if (w > 0) {
+                colorGradient = LinearGradient(0f, 0f, w.toFloat(), 0f, colorSeeds, null, Shader.TileMode.CLAMP)
+                rectPaint.shader = colorGradient
+                invalidate()
+            }
+        }
+    var progress: Int = 0
+        set(value) {
+            field = value
+            if (w > 0) {
+                thumbX = w * ((progress.toFloat() / 100))
+                invalidate()
+            }
+        }
     private var canvasHeight: Int = 60
     private var barHeight: Int = 20
     private var rectf: RectF = RectF()
@@ -20,7 +48,7 @@ class ColorSeekBar(context: Context, attributeSet: AttributeSet): View(context, 
     private var thumbPaint: Paint = Paint()
     private lateinit var colorGradient: LinearGradient
     private var thumbX: Float = 24f
-    private var thumbY: Float = (canvasHeight/2).toFloat()
+    private var thumbY: Float = (canvasHeight / 2).toFloat()
     private var thumbBorder: Float = 4f
     private var thumbRadius: Float = 16f
     private var thumbBorderRadius: Float = thumbRadius + thumbBorder
@@ -55,10 +83,16 @@ class ColorSeekBar(context: Context, attributeSet: AttributeSet): View(context, 
         }
         thumbBorderRadius = thumbRadius + thumbBorder
         canvasHeight = (thumbBorderRadius * 3).toInt()
-        thumbY = (canvasHeight/2).toFloat()
+        thumbY = (canvasHeight / 2).toFloat()
 
         oldThumbRadius = thumbRadius
         oldThumbBorderRadius = thumbBorderRadius
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent?): Boolean {
+        IdleMode.instance.resetCountdown()
+        ScreensaverMode.instance.resetCountdown()
+        return super.dispatchTouchEvent(event)
     }
 
     private fun getColorsById(@ArrayRes id: Int): IntArray {
@@ -90,16 +124,17 @@ class ColorSeekBar(context: Context, attributeSet: AttributeSet): View(context, 
         val barBottom: Float = ((canvasHeight / 2) + (barHeight / 2)).toFloat()
 
         //draw color bar
-        rectf.set(barLeft, barTop,barRight,barBottom)
+        rectf.set(barLeft, barTop, barRight, barBottom)
         canvas?.drawRoundRect(rectf, barCornerRadius, barCornerRadius, rectPaint)
 
-        if (thumbX < barLeft){
+        if (thumbX < barLeft) {
             thumbX = barLeft
-        }else if (thumbX > barRight){
+        } else if (thumbX > barRight) {
             thumbX = barRight
         }
         val color = pickColor(thumbX, width)
-        thumbPaint.color = color
+        thumbPaint.color = Color.rgb(Color.red(color), Color.green(color), Color.blue(color))
+        thumbPaint.alpha = Color.alpha(color)
 
         // draw color bar thumb
         canvas?.drawCircle(thumbX, thumbY, thumbBorderRadius, thumbBorderPaint)
@@ -118,10 +153,11 @@ class ColorSeekBar(context: Context, attributeSet: AttributeSet): View(context, 
                 val c0 = colorSeeds[i]
                 val c1 = colorSeeds[i + 1]
 
+                val alpha = mix(Color.alpha(c0), Color.alpha(c1), colorPosition)
                 val red = mix(Color.red(c0), Color.red(c1), colorPosition)
                 val green = mix(Color.green(c0), Color.green(c1), colorPosition)
                 val blue = mix(Color.blue(c0), Color.blue(c1), colorPosition)
-                return Color.rgb( red, green, blue)
+                return Color.argb(alpha, red, green, blue)
             }
         }
     }
@@ -132,6 +168,7 @@ class ColorSeekBar(context: Context, attributeSet: AttributeSet): View(context, 
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
+        this.w = w
         colorGradient = LinearGradient(0f, 0f, w.toFloat(), 0f, colorSeeds, null, Shader.TileMode.CLAMP)
         rectPaint.shader = colorGradient
     }
@@ -142,7 +179,7 @@ class ColorSeekBar(context: Context, attributeSet: AttributeSet): View(context, 
     }
 
     override fun onTouchEvent(event: MotionEvent?): Boolean {
-        when(event?.action){
+        when (event?.action) {
             MotionEvent.ACTION_DOWN -> {
                 thumbBorderRadius = (oldThumbBorderRadius * 1.5).toFloat()
                 thumbRadius = (oldThumbRadius * 1.5).toFloat()
@@ -153,25 +190,31 @@ class ColorSeekBar(context: Context, attributeSet: AttributeSet): View(context, 
                     thumbX = it
                     invalidate()
                 }
-                colorChangeListener?.onColorChangeListener(getColor())
+                progress = when {
+                    thumbX <= 0 -> 0
+                    thumbX >= w -> 100
+                    else -> ((thumbX / w) * 100).toInt()
+                }
+                colorChangeListener?.onColorChangeListener(getColor(), progress)
             }
             MotionEvent.ACTION_UP -> {
                 thumbBorderRadius = oldThumbBorderRadius
                 thumbRadius = oldThumbRadius
+                colorChangeListener?.onStopTrackingTouch(getColor(), progress)
                 invalidate()
             }
         }
         return true
     }
 
-    fun getColor()  = thumbPaint.color
+    fun getColor() = pickColor(thumbX, width)
 
     fun setOnColorChangeListener(onColorChangeListener: OnColorChangeListener) {
         this.colorChangeListener = onColorChangeListener
     }
 
     interface OnColorChangeListener {
-
-        fun onColorChangeListener(color: Int)
+        fun onColorChangeListener(color: Int, progress: Int)
+        fun onStopTrackingTouch(color: Int, progress: Int)
     }
 }
