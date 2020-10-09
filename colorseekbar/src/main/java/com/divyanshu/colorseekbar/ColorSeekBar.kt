@@ -89,12 +89,6 @@ class ColorSeekBar(context: Context, attributeSet: AttributeSet) : View(context,
         oldThumbBorderRadius = thumbBorderRadius
     }
 
-    override fun dispatchTouchEvent(event: MotionEvent?): Boolean {
-        IdleMode.instance.resetCountdown()
-        ScreensaverMode.instance.resetCountdown()
-        return super.dispatchTouchEvent(event)
-    }
-
     private fun getColorsById(@ArrayRes id: Int): IntArray {
         if (isInEditMode) {
             val s = context.resources.getStringArray(id)
